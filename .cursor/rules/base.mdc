@@ -19,6 +19,10 @@ alwaysApply: true
 
 Полное описание всех полей, правил извлечения и примеров см. в `filter-fields-basic.md`
 
+**ВАЖНО:** Файлы `process_with_gpt.py` и `filter-fields-basic.md` должны быть синхронизированы! При изменении полей обновляй оба файла:
+- `filter-fields-basic.md` — документация структуры полей
+- `process_with_gpt.py` — RESPONSE_SCHEMA и SYSTEM_PROMPT с правилами извлечения
+
 ## СТРУКТУРА СТРАНИЦ
 
 ```
@@ -108,7 +112,7 @@ python3 fetch_vacancies.py [output_file.json]
 5. Продолжает со следующей пачки до обработки всех вакансий
 
 **Формат выходных файлов:**
-- `vacancy-{page_id}.json` с полями согласно `filter-fields-basic.md` (12 полей)
+- `vacancy-{page_id}.json` с полями согласно `filter-fields-basic.md` (15 полей)
 
 ### 3. `/apply-patches` - Применение патчей
 

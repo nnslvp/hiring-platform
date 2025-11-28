@@ -1,0 +1,10 @@
+node_modules/
+.chrome-data/
+exported_messages/
+export_state.json
+browser_info.json
+session.json
+cookies.txt
+funnel_analysis.json
+funnel_report.txt
+.env

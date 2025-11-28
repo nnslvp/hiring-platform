@@ -220,9 +220,19 @@ def extract_text_from_blocks(blocks):
     
     return '\n'.join(text_lines)
 
+def extract_status(page):
+    """Извлекает статус из свойств страницы"""
+    properties = page.get('properties', {})
+    status_prop = properties.get('Status', {})
+    if status_prop.get('type') == 'status':
+        status_data = status_prop.get('status')
+        if status_data:
+            return status_data.get('name')
+    return None
+
 def fetch_all_vacancies():
-    """Получает все ID вакансий из базы данных с пагинацией"""
-    all_page_ids = []
+    """Получает все вакансии из базы данных с пагинацией"""
+    all_pages = []
     start_cursor = None
     
     while True:
@@ -250,7 +260,10 @@ def fetch_all_vacancies():
             results = result.get('results', [])
             
             for page in results:
-                all_page_ids.append(page.get('id'))
+                all_pages.append({
+                    'id': page.get('id'),
+                    'status': extract_status(page)
+                })
             
             has_more = result.get('has_more', False)
             if has_more:
@@ -270,25 +283,27 @@ def fetch_all_vacancies():
             print(f"❌ Ошибка: {e}")
             return None
     
-    return all_page_ids
+    return all_pages
 
 def main():
     output_file = sys.argv[1] if len(sys.argv) > 1 else 'vacancies.json'
     
-    print(f"📥 Получение ID вакансий из Notion...")
-    page_ids = fetch_all_vacancies()
+    print(f"📥 Получение вакансий из Notion...")
+    pages = fetch_all_vacancies()
     
-    if page_ids is None:
+    if pages is None:
         print("❌ Не удалось получить вакансии")
         sys.exit(1)
     
-    print(f"✅ Получено {len(page_ids)} вакансий")
+    print(f"✅ Получено {len(pages)} вакансий")
     print(f"📥 Получение вложенных документов и их содержимого...")
     
     vacancies_data = []
     
-    for i, page_id in enumerate(page_ids, 1):
-        print(f"  Обработка {i}/{len(page_ids)}: {page_id[:8]}...")
+    for i, page_info in enumerate(pages, 1):
+        page_id = page_info['id']
+        status = page_info['status']
+        print(f"  Обработка {i}/{len(pages)}: {page_id[:8]}... (статус: {status})")
         child_page_ids = get_child_pages(page_id)
         
         child_pages_content = []
@@ -303,6 +318,7 @@ def main():
         
         vacancy = {
             "page_id": page_id,
+            "status": status,
             "child_pages": child_pages_content
         }
         
@@ -314,10 +330,18 @@ def main():
     print(f"\n💾 Данные сохранены в файл: {output_file}")
     
     total_child_pages = sum(len(v.get('child_pages', [])) for v in vacancies_data)
+    status_counts = {}
+    for v in vacancies_data:
+        status = v.get('status') or 'Не указан'
+        status_counts[status] = status_counts.get(status, 0) + 1
+    
     print(f"\n📊 Статистика:")
     print(f"  Всего вакансий: {len(vacancies_data)}")
     print(f"  Всего вложенных документов: {total_child_pages}")
     print(f"  Вакансий с вложенными документами: {sum(1 for v in vacancies_data if v.get('child_pages'))}")
+    print(f"\n📋 По статусам:")
+    for status, count in sorted(status_counts.items()):
+        print(f"  {status}: {count}")
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Анализ чатов TikTok</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+
+        .stat-card h3 {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-card .value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-card .percentage {
+            font-size: 1.2em;
+            color: #764ba2;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .chart-card {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .chart-card h2 {
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 1.5em;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+        }
+
+        .table-card {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .search-box {
+            margin-bottom: 20px;
+            padding: 12px 20px;
+            width: 100%;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1em;
+            transition: border-color 0.3s ease;
+        }
+
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            transition: background 0.3s ease;
+        }
+
+        th:hover {
+            background: linear-gradient(135deg, #5568d3 0%, #653a8b 100%);
+        }
+
+        th.sortable::after {
+            content: ' ⇅';
+            opacity: 0.5;
+            font-size: 0.8em;
+        }
+
+        th.sort-asc::after {
+            content: ' ↑';
+            opacity: 1;
+        }
+
+        th.sort-desc::after {
+            content: ' ↓';
+            opacity: 1;
+        }
+
+        .chat-name {
+            color: #667eea;
+            font-weight: 600;
+            cursor: pointer;
+            transition: color 0.3s ease;
+            user-select: none;
+        }
+
+        .chat-name:hover {
+            color: #764ba2;
+        }
+
+        .chat-name:active {
+            transform: scale(0.98);
+        }
+
+        .checkbox-cell {
+            width: 40px;
+            text-align: center;
+        }
+
+        .chat-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #667eea;
+        }
+
+        .checked-row {
+            background: #f0fdf4;
+        }
+
+        .copy-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #10b981;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            animation: slideIn 0.3s ease, slideOut 0.3s ease 2s forwards;
+            z-index: 1000;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        tr:hover:not(.matches-row) {
+            background: #f8f9ff;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .badge-yes {
+            background: #10b981;
+            color: white;
+        }
+
+        .badge-no {
+            background: #ef4444;
+            color: white;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: white;
+            font-size: 1.5em;
+        }
+
+        .error {
+            background: #ef4444;
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 1.8em;
+            }
+        }
+
+        /* Стили для колонки вакансий */
+        .vacancies-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .vacancies-badge.has-matches {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+        }
+
+        .vacancies-badge.no-matches {
+            background: #e5e7eb;
+            color: #6b7280;
+            cursor: default;
+        }
+
+        .vacancies-badge.has-matches:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+
+        .expand-icon {
+            font-size: 0.8em;
+            transition: transform 0.3s ease;
+        }
+
+        .top5-score {
+            font-size: 0.85em;
+            opacity: 0.9;
+            margin-left: 2px;
+        }
+
+        .expanded .expand-icon {
+            transform: rotate(180deg);
+        }
+
+        /* Раскрывающаяся строка с вакансиями */
+        .matches-row {
+            display: none;
+            background: #f8fafc;
+        }
+
+        .matches-row.visible {
+            display: table-row;
+        }
+
+        .matches-row td {
+            padding: 20px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .matches-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 16px;
+        }
+
+        /* Карточка вакансии */
+        .vacancy-card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border: 1px solid #e2e8f0;
+            transition: all 0.2s ease;
+        }
+
+        .vacancy-card:hover {
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+            transform: translateY(-2px);
+        }
+
+        .vacancy-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .score-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 1.1em;
+            flex-shrink: 0;
+        }
+
+        .score-high {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+        }
+
+        .score-medium {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+        }
+
+        .score-low {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+        }
+
+        .vacancy-name {
+            font-weight: 600;
+            color: #1e293b;
+            font-size: 0.95em;
+            line-height: 1.3;
+        }
+
+        .vacancy-link {
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .vacancy-link:hover {
+            color: #667eea;
+            text-decoration: underline;
+        }
+
+        .vacancy-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 12px;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75em;
+            font-weight: 500;
+        }
+
+        .tag-warning {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fcd34d;
+        }
+
+        .tag-match {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #6ee7b7;
+        }
+
+        .tag-blocker {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+        }
+
+        .no-vacancies-message {
+            text-align: center;
+            padding: 20px;
+            color: #6b7280;
+            font-style: italic;
+        }
+
+        /* Кнопки действий на карточке вакансии */
+        .vacancy-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .vacancy-btn {
+            flex: 1;
+            padding: 8px 12px;
+            border: 2px solid;
+            border-radius: 8px;
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: white;
+        }
+
+        .vacancy-btn-approve {
+            border-color: #10b981;
+            color: #10b981;
+        }
+
+        .vacancy-btn-approve:hover {
+            background: #10b981;
+            color: white;
+        }
+
+        .vacancy-btn-approve.active {
+            background: #10b981;
+            color: white;
+        }
+
+        .vacancy-btn-reject {
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+
+        .vacancy-btn-reject:hover {
+            background: #ef4444;
+            color: white;
+        }
+
+        .vacancy-btn-reject.active {
+            background: #ef4444;
+            color: white;
+        }
+
+        /* Состояния карточки вакансии */
+        .vacancy-card.approved {
+            border-color: #10b981;
+            background: #f0fdf4;
+        }
+
+        .vacancy-card.rejected {
+            border-color: #ef4444;
+            background: #fef2f2;
+            opacity: 0.6;
+        }
+
+        .vacancy-card.rejected:hover {
+            opacity: 1;
+        }
+
+        /* Счётчик отмеченных вакансий */
+        .vacancy-status-count {
+            font-size: 0.8em;
+            margin-left: 8px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.3);
+        }
+
+        /* Expandable row indicator */
+        .data-row {
+            cursor: pointer;
+        }
+
+        .data-row.has-vacancies:hover {
+            background: #f1f5f9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Dashboard - Анализ чатов TikTok</h1>
+            <p>Воронка рекрутинга водителей в Польше</p>
+        </div>
+
+        <div id="loading" class="loading">Загрузка данных...</div>
+        <div id="error" style="display: none;"></div>
+
+        <div id="content" style="display: none;">
+            <div class="stats-grid" id="statsGrid"></div>
+            
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <h2>Распределение по параметрам</h2>
+                    <div class="chart-container">
+                        <canvas id="barChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-card">
+                    <h2>Воронка конверсии</h2>
+                    <div class="chart-container">
+                        <canvas id="funnelChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-card">
+                <h2>Детальные данные по чатам</h2>
+                <input type="text" class="search-box" id="searchBox" placeholder="Поиск по имени чата...">
+                <div style="overflow-x: auto;">
+                    <table id="chatsTable">
+                        <thead>
+                            <tr>
+                                <th class="checkbox-cell">✓</th>
+                                <th class="sortable" data-sort="chatName" data-type="text">Чат</th>
+                                <th class="sortable" data-sort="messagesCount" data-type="number">Сообщений</th>
+                                <th class="sortable" data-sort="top5Score" data-type="number" title="Сортировка по сумме топ-5 скоров">Вакансий</th>
+                                <th class="sortable" data-sort="has_work_permit_in_poland" data-type="boolean">Разрешение PL</th>
+                                <th class="sortable" data-sort="preferences_provided" data-type="boolean">Пожелания</th>
+                                <th class="sortable" data-sort="vacancy_offered" data-type="boolean">Вакансия</th>
+                                <th class="sortable" data-sort="vacancy_accepted" data-type="boolean">Согласие</th>
+                                <th class="sortable" data-sort="external_contact_shared" data-type="boolean">Контакт</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allData = [];
+        let matchingData = {};
+        let currentSort = { column: null, direction: 'asc' };
+        let filteredData = [];
+        let expandedRows = new Set();
+
+        // ═══════════════════════════════════════════════════════════════
+        // PLACEHOLDER: Данные будут встроены сюда скриптом build_dashboard.py
+        // ═══════════════════════════════════════════════════════════════
+        // const EMBEDDED_CANDIDATES = [...];
+        // const EMBEDDED_MATCHING = {...};
+
+        async function loadData() {
+            try {
+                if (typeof EMBEDDED_CANDIDATES === 'undefined' || typeof EMBEDDED_MATCHING === 'undefined') {
+                    throw new Error('Данные не встроены. Запустите: python3 build_dashboard.py');
+                }
+                
+                allData = EMBEDDED_CANDIDATES;
+                EMBEDDED_MATCHING.results.forEach(r => {
+                    matchingData[r.candidate] = r;
+                });
+                
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+                
+                renderStats();
+                renderCharts();
+                filteredData = [...allData];
+                
+                // Сортировка по умолчанию: по сумме топ-5 скоров (убывание)
+                filteredData = sortData(filteredData, 'top5Score', 'number', 'desc');
+                currentSort = { column: 'top5Score', direction: 'desc' };
+                
+                renderTable(filteredData);
+                setupSearch();
+                setupTableSort();
+                
+                // Подсветить колонку сортировки
+                const header = document.querySelector('th[data-sort="top5Score"]');
+                if (header) header.classList.add('sort-desc');
+            } catch (error) {
+                document.getElementById('loading').style.display = 'none';
+                const errorDiv = document.getElementById('error');
+                errorDiv.style.display = 'block';
+                errorDiv.className = 'error';
+                errorDiv.textContent = `Ошибка: ${error.message}`;
+            }
+        }
+
+        function getMatchCount(chatName) {
+            const match = matchingData[chatName];
+            return match ? match.total_matches : 0;
+        }
+
+        function getMatches(chatName) {
+            const match = matchingData[chatName];
+            return match ? match.matches : [];
+        }
+
+        // Сумма топ-5 скоров для сортировки кандидатов
+        function getTop5Score(chatName) {
+            const matches = getMatches(chatName);
+            if (matches.length === 0) return 0;
+            
+            // Берём топ-5 вакансий (уже отсортированы по score)
+            const top5 = matches.slice(0, 5);
+            return top5.reduce((sum, m) => sum + m.score, 0);
+        }
+
+        function getMaxScore(chatName) {
+            const matches = getMatches(chatName);
+            if (matches.length === 0) return 0;
+            return matches[0].score; // первая вакансия имеет максимальный score
+        }
+
+        function calculateStats() {
+            const total = allData.length;
+            const stats = {
+                has_work_permit_in_poland: 0,
+                preferences_provided: 0,
+                vacancy_offered: 0,
+                vacancy_accepted: 0,
+                external_contact_shared: 0
+            };
+
+            allData.forEach(chat => {
+                for (const key in stats) {
+                    if (chat.checklist[key]) stats[key]++;
+                }
+            });
+
+            return { total, stats };
+        }
+
+        function renderStats() {
+            const { total, stats } = calculateStats();
+            const labels = {
+                total: 'Всего чатов',
+                has_work_permit_in_poland: 'Разрешение в Польше',
+                preferences_provided: 'Указали пожелания',
+                vacancy_offered: 'Получили вакансию',
+                vacancy_accepted: 'Согласились',
+                external_contact_shared: 'Обменялись контактами'
+            };
+
+            const grid = document.getElementById('statsGrid');
+            grid.innerHTML = `
+                <div class="stat-card">
+                    <h3>${labels.total}</h3>
+                    <div class="value">${total}</div>
+                    <div class="percentage">чатов</div>
+                </div>
+            `;
+
+            for (const [key, count] of Object.entries(stats)) {
+                const percentage = ((count / total) * 100).toFixed(1);
+                grid.innerHTML += `
+                    <div class="stat-card">
+                        <h3>${labels[key]}</h3>
+                        <div class="value">${count}</div>
+                        <div class="percentage">${percentage}%</div>
+                    </div>
+                `;
+            }
+        }
+
+        function renderCharts() {
+            const { total, stats } = calculateStats();
+            
+            const barCtx = document.getElementById('barChart').getContext('2d');
+            new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: [
+                        'Разрешение\nв Польше',
+                        'Указали\nпожелания',
+                        'Получили\nвакансию',
+                        'Согласились',
+                        'Обменялись\nконтактами'
+                    ],
+                    datasets: [{
+                        label: 'Количество чатов',
+                        data: Object.values(stats),
+                        backgroundColor: [
+                            'rgba(102, 126, 234, 0.8)',
+                            'rgba(118, 75, 162, 0.8)',
+                            'rgba(16, 185, 129, 0.8)',
+                            'rgba(59, 130, 246, 0.8)',
+                            'rgba(239, 68, 68, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(102, 126, 234, 1)',
+                            'rgba(118, 75, 162, 1)',
+                            'rgba(16, 185, 129, 1)',
+                            'rgba(59, 130, 246, 1)',
+                            'rgba(239, 68, 68, 1)'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    }
+                }
+            });
+
+            const funnelData = [
+                { stage: 'Всего чатов', count: total },
+                { stage: 'С разрешением', count: stats.has_work_permit_in_poland },
+                { stage: 'Указали пожелания', count: stats.preferences_provided },
+                { stage: 'Получили вакансию', count: stats.vacancy_offered },
+                { stage: 'Согласились', count: stats.vacancy_accepted }
+            ];
+
+            const funnelCtx = document.getElementById('funnelChart').getContext('2d');
+            new Chart(funnelCtx, {
+                type: 'line',
+                data: {
+                    labels: funnelData.map(d => d.stage),
+                    datasets: [{
+                        label: 'Воронка конверсии',
+                        data: funnelData.map(d => d.count),
+                        fill: true,
+                        backgroundColor: 'rgba(102, 126, 234, 0.2)',
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        borderWidth: 3,
+                        tension: 0.4,
+                        pointRadius: 6,
+                        pointBackgroundColor: 'rgba(102, 126, 234, 1)',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function loadCheckedState() {
+            const saved = localStorage.getItem('checkedChats');
+            return saved ? JSON.parse(saved) : {};
+        }
+
+        function saveCheckedState(chatName, checked) {
+            const state = loadCheckedState();
+            if (checked) {
+                state[chatName] = true;
+            } else {
+                delete state[chatName];
+            }
+            localStorage.setItem('checkedChats', JSON.stringify(state));
+        }
+
+        // === Состояния вакансий для кандидатов ===
+        // Формат: { "chatName:vacancyId": "approved" | "rejected" }
+        function loadVacancyStates() {
+            const saved = localStorage.getItem('vacancyStates');
+            return saved ? JSON.parse(saved) : {};
+        }
+
+        function saveVacancyState(chatName, vacancyId, state) {
+            const states = loadVacancyStates();
+            const key = `${chatName}:${vacancyId}`;
+            
+            if (state) {
+                states[key] = state;
+            } else {
+                delete states[key];
+            }
+            localStorage.setItem('vacancyStates', JSON.stringify(states));
+        }
+
+        function getVacancyState(chatName, vacancyId) {
+            const states = loadVacancyStates();
+            return states[`${chatName}:${vacancyId}`] || null;
+        }
+
+        function toggleVacancyState(chatName, vacancyId, newState) {
+            const currentState = getVacancyState(chatName, vacancyId);
+            
+            // Если текущее состояние совпадает с новым - снимаем
+            if (currentState === newState) {
+                saveVacancyState(chatName, vacancyId, null);
+                return null;
+            }
+            
+            saveVacancyState(chatName, vacancyId, newState);
+            return newState;
+        }
+
+        function getVacancyStatsCounts(chatName) {
+            const states = loadVacancyStates();
+            let approved = 0, rejected = 0;
+            
+            for (const key in states) {
+                if (key.startsWith(`${chatName}:`)) {
+                    if (states[key] === 'approved') approved++;
+                    if (states[key] === 'rejected') rejected++;
+                }
+            }
+            
+            return { approved, rejected };
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showCopyNotification(text);
+            }).catch(err => {
+                console.error('Ошибка копирования:', err);
+            });
+        }
+
+        function showCopyNotification(text) {
+            const notification = document.createElement('div');
+            notification.className = 'copy-notification';
+            notification.textContent = `Скопировано: ${text}`;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 2300);
+        }
+
+        function getScoreClass(score) {
+            if (score >= 70) return 'score-high';
+            if (score >= 50) return 'score-medium';
+            return 'score-low';
+        }
+
+        function getNotionUrl(vacancyId) {
+            const cleanId = vacancyId.replace(/-/g, '');
+            return `https://www.notion.so/${cleanId}`;
+        }
+
+        function renderVacancyCard(vacancy, chatName) {
+            const scoreClass = getScoreClass(vacancy.score);
+            const notionUrl = getNotionUrl(vacancy.vacancy_id);
+            const state = getVacancyState(chatName, vacancy.vacancy_id);
+            const stateClass = state ? state : '';
+            
+            const warningTags = (vacancy.warnings || [])
+                .slice(0, 3)
+                .map(w => `<span class="tag tag-warning">${w}</span>`)
+                .join('');
+            
+            const matchTags = (vacancy.matches || [])
+                .slice(0, 3)
+                .map(m => `<span class="tag tag-match">${m}</span>`)
+                .join('');
+
+            return `
+                <div class="vacancy-card ${stateClass}" data-vacancy-id="${vacancy.vacancy_id}" data-chat="${chatName}">
+                    <div class="vacancy-header">
+                        <div class="score-badge ${scoreClass}">${vacancy.score}</div>
+                        <a href="${notionUrl}" target="_blank" class="vacancy-name vacancy-link">${vacancy.vacancy_name}</a>
+                    </div>
+                    <div class="vacancy-tags">
+                        ${matchTags}
+                        ${warningTags}
+                    </div>
+                    <div class="vacancy-actions">
+                        <button class="vacancy-btn vacancy-btn-approve ${state === 'approved' ? 'active' : ''}" 
+                                data-action="approved" data-vacancy="${vacancy.vacancy_id}" data-chat="${chatName}">
+                            ✓ Подходит
+                        </button>
+                        <button class="vacancy-btn vacancy-btn-reject ${state === 'rejected' ? 'active' : ''}"
+                                data-action="rejected" data-vacancy="${vacancy.vacancy_id}" data-chat="${chatName}">
+                            ✗ Отклонить
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderMatchesRow(chatName, colSpan) {
+            const matches = getMatches(chatName);
+            
+            if (matches.length === 0) {
+                return `
+                    <tr class="matches-row" data-matches-for="${chatName}">
+                        <td colspan="${colSpan}">
+                            <div class="no-vacancies-message">Нет подходящих вакансий</div>
+                        </td>
+                    </tr>
+                `;
+            }
+
+            const cards = matches.map(m => renderVacancyCard(m, chatName)).join('');
+            const stats = getVacancyStatsCounts(chatName);
+            const statsHtml = (stats.approved || stats.rejected) 
+                ? `<div style="margin-bottom: 12px; font-size: 0.9em; color: #6b7280;">
+                     Отмечено: <span style="color: #10b981;">✓ ${stats.approved}</span> | 
+                     <span style="color: #ef4444;">✗ ${stats.rejected}</span>
+                   </div>` 
+                : '';
+            
+            return `
+                <tr class="matches-row" data-matches-for="${chatName}">
+                    <td colspan="${colSpan}">
+                        ${statsHtml}
+                        <div class="matches-container">
+                            ${cards}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('tableBody');
+            const checkedState = loadCheckedState();
+            const colSpan = 9;
+            
+            let html = '';
+            
+            data.forEach(chat => {
+                const c = chat.checklist;
+                const isChecked = checkedState[chat.chatName] || false;
+                const matchCount = getMatchCount(chat.chatName);
+                const hasMatches = matchCount > 0;
+                const isExpanded = expandedRows.has(chat.chatName);
+                
+                html += `
+                    <tr class="data-row ${isChecked ? 'checked-row' : ''} ${hasMatches ? 'has-vacancies' : ''} ${isExpanded ? 'expanded' : ''}" 
+                        data-chat-name="${chat.chatName}">
+                        <td class="checkbox-cell">
+                            <input type="checkbox" 
+                                   class="chat-checkbox" 
+                                   ${isChecked ? 'checked' : ''} 
+                                   data-chat="${chat.chatName}">
+                        </td>
+                        <td>
+                            <span class="chat-name" data-name="${chat.chatName}" title="Клик для копирования">
+                                ${chat.chatName}
+                            </span>
+                        </td>
+                        <td>${chat.messagesCount}</td>
+                        <td>
+                            <span class="vacancies-badge ${hasMatches ? 'has-matches' : 'no-matches'}" 
+                                  data-chat="${chat.chatName}"
+                                  title="Топ-5 сумма: ${getTop5Score(chat.chatName)}">
+                                ${matchCount}
+                                ${hasMatches ? `<span class="top5-score">(${getTop5Score(chat.chatName)})</span>` : ''}
+                                ${hasMatches ? `<span class="expand-icon">▼</span>` : ''}
+                            </span>
+                        </td>
+                        <td><span class="badge ${c.has_work_permit_in_poland ? 'badge-yes' : 'badge-no'}">${c.has_work_permit_in_poland ? '✓' : '✗'}</span></td>
+                        <td><span class="badge ${c.preferences_provided ? 'badge-yes' : 'badge-no'}">${c.preferences_provided ? '✓' : '✗'}</span></td>
+                        <td><span class="badge ${c.vacancy_offered ? 'badge-yes' : 'badge-no'}">${c.vacancy_offered ? '✓' : '✗'}</span></td>
+                        <td><span class="badge ${c.vacancy_accepted ? 'badge-yes' : 'badge-no'}">${c.vacancy_accepted ? '✓' : '✗'}</span></td>
+                        <td><span class="badge ${c.external_contact_shared ? 'badge-yes' : 'badge-no'}">${c.external_contact_shared ? '✓' : '✗'}</span></td>
+                    </tr>
+                `;
+                
+                html += renderMatchesRow(chat.chatName, colSpan);
+            });
+            
+            tbody.innerHTML = html;
+            
+            expandedRows.forEach(chatName => {
+                const matchesRow = document.querySelector(`tr[data-matches-for="${chatName}"]`);
+                if (matchesRow) {
+                    matchesRow.classList.add('visible');
+                }
+            });
+
+            setupTableInteractions();
+        }
+
+        function toggleMatchesRow(chatName) {
+            const dataRow = document.querySelector(`tr.data-row[data-chat-name="${chatName}"]`);
+            const matchesRow = document.querySelector(`tr[data-matches-for="${chatName}"]`);
+            
+            if (!matchesRow) return;
+            
+            const isVisible = matchesRow.classList.contains('visible');
+            
+            if (isVisible) {
+                matchesRow.classList.remove('visible');
+                dataRow.classList.remove('expanded');
+                expandedRows.delete(chatName);
+            } else {
+                matchesRow.classList.add('visible');
+                dataRow.classList.add('expanded');
+                expandedRows.add(chatName);
+            }
+        }
+
+        function setupTableInteractions() {
+            document.querySelectorAll('.chat-name').forEach(element => {
+                element.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const name = e.target.dataset.name;
+                    copyToClipboard(name);
+                });
+            });
+
+            document.querySelectorAll('.chat-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+                checkbox.addEventListener('change', (e) => {
+                    const chatName = e.target.dataset.chat;
+                    const checked = e.target.checked;
+                    saveCheckedState(chatName, checked);
+                    
+                    const row = e.target.closest('tr');
+                    if (checked) {
+                        row.classList.add('checked-row');
+                    } else {
+                        row.classList.remove('checked-row');
+                    }
+                });
+            });
+
+            document.querySelectorAll('.vacancies-badge.has-matches').forEach(badge => {
+                badge.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const chatName = e.target.closest('.vacancies-badge').dataset.chat;
+                    toggleMatchesRow(chatName);
+                });
+            });
+
+            document.querySelectorAll('tr.data-row.has-vacancies').forEach(row => {
+                row.addEventListener('click', (e) => {
+                    if (e.target.closest('.chat-checkbox') || e.target.closest('.chat-name')) {
+                        return;
+                    }
+                    const chatName = row.dataset.chatName;
+                    toggleMatchesRow(chatName);
+                });
+            });
+
+            // Обработчики кнопок вакансий
+            document.querySelectorAll('.vacancy-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const action = btn.dataset.action;
+                    const vacancyId = btn.dataset.vacancy;
+                    const chatName = btn.dataset.chat;
+                    
+                    const newState = toggleVacancyState(chatName, vacancyId, action);
+                    
+                    // Обновить UI карточки
+                    const card = btn.closest('.vacancy-card');
+                    card.classList.remove('approved', 'rejected');
+                    if (newState) {
+                        card.classList.add(newState);
+                    }
+                    
+                    // Обновить кнопки
+                    const approveBtn = card.querySelector('.vacancy-btn-approve');
+                    const rejectBtn = card.querySelector('.vacancy-btn-reject');
+                    approveBtn.classList.toggle('active', newState === 'approved');
+                    rejectBtn.classList.toggle('active', newState === 'rejected');
+                    
+                    // Обновить счётчик в заголовке
+                    updateVacancyStatsDisplay(chatName);
+                });
+            });
+        }
+
+        function updateVacancyStatsDisplay(chatName) {
+            const stats = getVacancyStatsCounts(chatName);
+            const matchesRow = document.querySelector(`tr[data-matches-for="${chatName}"]`);
+            if (!matchesRow) return;
+            
+            let statsDiv = matchesRow.querySelector('.vacancy-stats-display');
+            const statsHtml = `Отмечено: <span style="color: #10b981;">✓ ${stats.approved}</span> | 
+                              <span style="color: #ef4444;">✗ ${stats.rejected}</span>`;
+            
+            if (stats.approved || stats.rejected) {
+                if (!statsDiv) {
+                    statsDiv = document.createElement('div');
+                    statsDiv.className = 'vacancy-stats-display';
+                    statsDiv.style.cssText = 'margin-bottom: 12px; font-size: 0.9em; color: #6b7280;';
+                    const container = matchesRow.querySelector('.matches-container');
+                    container.parentNode.insertBefore(statsDiv, container);
+                }
+                statsDiv.innerHTML = statsHtml;
+            } else if (statsDiv) {
+                statsDiv.remove();
+            }
+        }
+
+        function setupSearch() {
+            const searchBox = document.getElementById('searchBox');
+            searchBox.addEventListener('input', (e) => {
+                const query = e.target.value.toLowerCase();
+                filteredData = allData.filter(chat => 
+                    chat.chatName.toLowerCase().includes(query)
+                );
+                renderTable(filteredData);
+            });
+        }
+
+        function sortData(data, column, type, direction) {
+            return [...data].sort((a, b) => {
+                let aVal, bVal;
+
+                if (column === 'chatName' || column === 'messagesCount') {
+                    aVal = a[column];
+                    bVal = b[column];
+                } else if (column === 'top5Score') {
+                    // Сортировка по сумме топ-5 скоров
+                    aVal = getTop5Score(a.chatName);
+                    bVal = getTop5Score(b.chatName);
+                } else if (column === 'totalMatches') {
+                    aVal = getMatchCount(a.chatName);
+                    bVal = getMatchCount(b.chatName);
+                } else {
+                    aVal = a.checklist[column];
+                    bVal = b.checklist[column];
+                }
+
+                if (type === 'boolean') {
+                    aVal = aVal ? 1 : 0;
+                    bVal = bVal ? 1 : 0;
+                } else if (type === 'text') {
+                    aVal = String(aVal).toLowerCase();
+                    bVal = String(bVal).toLowerCase();
+                }
+
+                if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        function setupTableSort() {
+            const headers = document.querySelectorAll('th.sortable');
+            
+            headers.forEach(header => {
+                header.addEventListener('click', () => {
+                    const column = header.dataset.sort;
+                    const type = header.dataset.type;
+
+                    if (currentSort.column === column) {
+                        currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        currentSort.column = column;
+                        currentSort.direction = 'asc';
+                    }
+
+                    headers.forEach(h => {
+                        h.classList.remove('sort-asc', 'sort-desc');
+                    });
+
+                    header.classList.add(currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+
+                    filteredData = sortData(filteredData, column, type, currentSort.direction);
+                    renderTable(filteredData);
+                });
+            });
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
