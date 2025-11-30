@@ -1,0 +1,16 @@
+name = "tg-notion-updater"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+# Переменные окружения (не секретные)
+[vars]
+NOTION_DB_ID = "2ba95810-6f37-815e-86f2-ed07436ca6b0"
+COL_SEARCH = "Name"
+COL_STATUS = "Status"
+STATUS_FROM = "Масса"
+STATUS_TO = "К работе"
+
+# Секреты добавляются через: wrangler secret put <NAME>
+# - TG_BOT_TOKEN
+# - NOTION_SECRET
+
