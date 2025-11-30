@@ -250,6 +250,7 @@ async function exportMessages(page, state) {
 
   const exportSummary = [];
   let newMessagesTotal = 0;
+  let skippedUnreadChats = 0;
 
   for (let i = 0; i < chatList.length; i++) {
     console.log(`\n[${i + 1}/${chatList.length}] Обработка чата...`);
@@ -272,11 +273,18 @@ async function exportMessages(page, state) {
       const lastMessagePreview = element.querySelector('[class*="SpanInfoExtract"]');
       const lastMessageTime = element.querySelector('[class*="SpanInfoTime"]');
       
+      const unreadBadge = element.querySelector('[class*="SpanNewMessage"]') ||
+                         element.querySelector('[class*="NewMessage"]');
+      const isUnread = unreadBadge !== null;
+      const unreadCount = unreadBadge ? unreadBadge.textContent.trim() : null;
+      
       return {
         chatName,
         foundBySelector: nameElement ? nameElement.className : 'not_found',
         lastMessagePreview: lastMessagePreview ? lastMessagePreview.textContent.trim() : null,
-        lastMessageTime: lastMessageTime ? lastMessageTime.textContent.trim() : null
+        lastMessageTime: lastMessageTime ? lastMessageTime.textContent.trim() : null,
+        isUnread,
+        unreadCount
       };
     }, i);
 
@@ -290,6 +298,12 @@ async function exportMessages(page, state) {
     
     if (i === 0) {
       console.log(`  DEBUG: Селектор найден через класс: ${chatInfo.foundBySelector}`);
+    }
+
+    if (chatInfo.isUnread) {
+      console.log(`  ⏭️  Пропуск: ${chatInfo.unreadCount} непрочитанных сообщений (сохраняем индикацию)`);
+      skippedUnreadChats++;
+      continue;
     }
 
     if (chatInfo.lastMessageTime && state.chats[chatKey]?.lastExport) {
@@ -445,6 +459,7 @@ async function exportMessages(page, state) {
   fs.writeFileSync(summaryPath, JSON.stringify({
     exportDate: new Date().toISOString(),
     totalChats: chatList.length,
+    skippedUnreadChats,
     chatsWithNewMessages: exportSummary.length,
     newMessagesTotal,
     chats: exportSummary
@@ -453,6 +468,7 @@ async function exportMessages(page, state) {
   console.log('\n========================================');
   console.log('✓ Экспорт завершен!');
   console.log(`✓ Всего чатов: ${chatList.length}`);
+  console.log(`✓ Пропущено непрочитанных: ${skippedUnreadChats}`);
   console.log(`✓ Чатов с новыми сообщениями: ${exportSummary.length}`);
   console.log(`✓ Новых сообщений: ${newMessagesTotal}`);
   console.log(`✓ Файлы сохранены в: ${OUTPUT_DIR}`);
