@@ -498,14 +498,23 @@ async def main_async(args):
         print(f"❌ Индекс начала ({start_idx}) >= количества чатов ({total_chats})")
         sys.exit(1)
 
-    # Фильтруем уже обработанные
+    # Фильтруем уже обработанные (пропускаем если нет новых сообщений)
     chats_to_process = []
     for idx in range(start_idx, end_idx):
         chat = chats[idx]
-        if chat['fileName'] not in existing_results:
-            chats_to_process.append((idx, chat))
-        else:
-            print(f"⏭️  {idx + 1}/{total_chats}: {chat['chatName']} — уже обработан")
+        current_count = len(chat['messages'])
+        
+        if chat['fileName'] in existing_results:
+            existing = existing_results[chat['fileName']]
+            existing_count = existing.get('messagesCount', 0)
+            
+            if current_count <= existing_count:
+                print(f"⏭️  {idx + 1}/{total_chats}: {chat['chatName']} — нет новых сообщений ({current_count})")
+                continue
+            else:
+                print(f"🔄 {idx + 1}/{total_chats}: {chat['chatName']} — новые сообщения ({existing_count} → {current_count})")
+        
+        chats_to_process.append((idx, chat))
 
     if not chats_to_process:
         print("\n✅ Все чаты в диапазоне уже обработаны")

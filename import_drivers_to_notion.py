@@ -2,8 +2,8 @@
 """
 Импорт водителей в Notion из candidate_analysis.json
 
-  python3 import_drivers_to_notion.py --import       # импортировать всех
-  python3 import_drivers_to_notion.py --import --batch-size 10
+  python3 import_drivers_to_notion.py              # импортировать всех
+  python3 import_drivers_to_notion.py --batch-size 10
 """
 
 import json
@@ -134,6 +134,63 @@ def create_driver_page(database_id, candidate):
     return notion_request("POST", "/pages", data)
 
 
+def update_driver_page(page_id, candidate):
+    props = build_page_properties(candidate)
+    return notion_request("PATCH", f"/pages/{page_id}", {"properties": props})
+
+
+def fetch_all_drivers(database_id):
+    """Загружает все записи из базы и возвращает словарь {name: {page_id, messagesCount}}"""
+    drivers = {}
+    start_cursor = None
+    
+    while True:
+        data = {"page_size": 100}
+        if start_cursor:
+            data["start_cursor"] = start_cursor
+        
+        result = notion_request("POST", f"/databases/{database_id}/query", data)
+        if not result:
+            break
+        
+        for page in result.get("results", []):
+            title_prop = page.get("properties", {}).get("Name", {}).get("title", [])
+            if title_prop:
+                name = title_prop[0].get("text", {}).get("content", "")
+                if name:
+                    messages_count = page.get("properties", {}).get("messagesCount", {}).get("number", 0) or 0
+                    drivers[name] = {
+                        "page_id": page["id"],
+                        "messagesCount": messages_count
+                    }
+        
+        if not result.get("has_more"):
+            break
+        start_cursor = result.get("next_cursor")
+    
+    return drivers
+
+
+def upsert_driver(database_id, candidate, existing_drivers):
+    """Создаёт или обновляет запись водителя. Возвращает (result, action, info)"""
+    chat_name = candidate.get('chatName', '')
+    current_messages = candidate.get('messagesCount', 0)
+    
+    if chat_name in existing_drivers:
+        existing = existing_drivers[chat_name]
+        existing_messages = existing.get('messagesCount', 0)
+        
+        if current_messages < existing_messages:
+            return None, "warning", f"{existing_messages} → {current_messages}"
+        
+        if current_messages == existing_messages:
+            return None, "skipped", None
+        
+        return update_driver_page(existing['page_id'], candidate), "updated", None
+    else:
+        return create_driver_page(database_id, candidate), "created", None
+
+
 def import_drivers(database_id, batch_size=None):
     if not os.path.exists(CANDIDATE_ANALYSIS_FILE):
         print(f"❌ Файл {CANDIDATE_ANALYSIS_FILE} не найден")
@@ -148,13 +205,19 @@ def import_drivers(database_id, batch_size=None):
         candidates = candidates[:batch_size]
         print(f"📦 Лимит: {batch_size}")
     
+    print("🔍 Загружаем существующие записи из Notion...")
+    existing_drivers = fetch_all_drivers(database_id)
+    print(f"📋 Найдено {len(existing_drivers)} существующих записей")
+    
     print(f"\n🚀 Импорт {len(candidates)} водителей (батчи по 10)...")
     
-    success = 0
+    created = 0
+    updated = 0
+    skipped = 0
+    warnings = 0
     errors = 0
     total = len(candidates)
     
-    # Разбиваем на батчи по 10
     for batch_start in range(0, total, 10):
         batch = candidates[batch_start:batch_start + 10]
         batch_num = batch_start // 10 + 1
@@ -164,7 +227,7 @@ def import_drivers(database_id, batch_size=None):
         
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = {
-                executor.submit(create_driver_page, database_id, c): c 
+                executor.submit(upsert_driver, database_id, c, existing_drivers): c 
                 for c in batch
             }
             
@@ -172,31 +235,37 @@ def import_drivers(database_id, batch_size=None):
                 candidate = futures[future]
                 chat_name = candidate.get('chatName', 'unknown')
                 
-                if future.result():
-                    print(f"  ✅ {chat_name}")
-                    success += 1
-                else:
-                    print(f"  ❌ {chat_name}")
+                try:
+                    result, action, info = future.result()
+                    if action == "skipped":
+                        skipped += 1
+                    elif action == "warning":
+                        print(f"  ⚠️  {chat_name} — в файле меньше сообщений ({info})")
+                        warnings += 1
+                    elif action == "created" and result:
+                        print(f"  ✅ {chat_name} (создан)")
+                        created += 1
+                    elif action == "updated" and result:
+                        print(f"  🔄 {chat_name} (обновлён)")
+                        updated += 1
+                    else:
+                        print(f"  ❌ {chat_name}")
+                        errors += 1
+                except Exception as e:
+                    print(f"  ❌ {chat_name}: {e}")
                     errors += 1
         
-        # Пауза между батчами
         if batch_start + 10 < total:
             time.sleep(1)
     
-    print(f"\n📊 Результат: ✅ {success} / ❌ {errors}")
+    print(f"\n📊 Результат: ✅ создано {created} / 🔄 обновлено {updated} / ⏭️  без изменений {skipped} / ⚠️  меньше сообщений {warnings} / ❌ ошибок {errors}")
 
 
 def main():
     parser = argparse.ArgumentParser(description='Импорт водителей в Notion')
-    parser.add_argument('--import', dest='do_import', action='store_true', help='Импортировать водителей')
     parser.add_argument('--batch-size', type=int, help='Количество записей для импорта')
     
     args = parser.parse_args()
-    
-    if not args.do_import:
-        parser.print_help()
-        return
-    
     import_drivers(DRIVERS_DB_ID, args.batch_size)
 
 

@@ -6,9 +6,11 @@ import { spawn } from 'child_process';
 
 chromium.use(stealth());
 
-const OUTPUT_DIR = './exported_messages';
-const STATE_FILE = './export_state.json';
-const BROWSER_INFO_FILE = './browser_info.json';
+// Пути относительно директории скрипта, а не cwd
+const SCRIPT_DIR = path.dirname(new URL(import.meta.url).pathname);
+const OUTPUT_DIR = path.join(SCRIPT_DIR, 'exported_messages');
+const STATE_FILE = path.join(SCRIPT_DIR, 'export_state.json');
+const BROWSER_INFO_FILE = path.join(SCRIPT_DIR, 'browser_info.json');
 const CDP_PORT = 9222;
 
 let globalBrowser = null;
@@ -71,7 +73,7 @@ async function launchDetachedBrowser() {
     `--remote-debugging-port=${CDP_PORT}`,
     '--no-first-run',
     '--no-default-browser-check',
-    `--user-data-dir=${path.join(process.cwd(), '.chrome-data')}`
+    `--user-data-dir=${path.join(SCRIPT_DIR, '.chrome-data')}`
   ];
   
   const chromeProcess = spawn(executablePath, chromeArgs, {
@@ -477,7 +479,7 @@ async function exportMessages(page, state) {
 
 async function main() {
   const state = loadState();
-  const userDataDir = path.join(process.cwd(), '.chrome-data');
+  const userDataDir = path.join(SCRIPT_DIR, '.chrome-data');
   const isFirstRun = !fs.existsSync(userDataDir);
 
   if (isFirstRun) {

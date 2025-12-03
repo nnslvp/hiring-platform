@@ -34,8 +34,14 @@ export default {
       const page = await findNotionPage(env, username);
       
       if (!page) {
-        await sendTelegramMessage(env.TG_BOT_TOKEN, chatId,
-          `❌ Запись с username "${username}" не найдена в базе данных.`);
+        const newPage = await createNotionPage(env, username);
+        if (newPage) {
+          await sendTelegramMessage(env.TG_BOT_TOKEN, chatId,
+            `✅ Создана новая запись "${username}"!\n\nСтатус: "${env.STATUS_TO}"\n\nВот запись:\n${newPage.url}`);
+        } else {
+          await sendTelegramMessage(env.TG_BOT_TOKEN, chatId,
+            `❌ Ошибка при создании записи для "${username}".`);
+        }
         return new Response('OK', { status: 200 });
       }
 
@@ -150,6 +156,43 @@ async function updateNotionPage(env, pageId) {
 
   if (!response.ok) {
     console.error('Notion update error:', await response.text());
+    return null;
+  }
+
+  return await response.json();
+}
+
+/**
+ * Создание новой страницы водителя в Notion
+ */
+async function createNotionPage(env, username) {
+  const tiktokUrl = `https://www.tiktok.com/@${username}`;
+  
+  const response = await fetch('https://api.notion.com/v1/pages', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.NOTION_SECRET}`,
+      'Notion-Version': '2022-06-28',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      parent: { database_id: env.NOTION_DB_ID },
+      properties: {
+        [env.COL_SEARCH]: {
+          title: [{ text: { content: username } }]
+        },
+        'TikTok URL': {
+          url: tiktokUrl
+        },
+        [env.COL_STATUS]: {
+          status: { name: env.STATUS_TO }
+        }
+      }
+    })
+  });
+
+  if (!response.ok) {
+    console.error('Notion create error:', await response.text());
     return null;
   }
 
