@@ -4,16 +4,20 @@
 
 ИСПОЛЬЗОВАНИЕ:
   python3 analyze_candidates.py [--batch-size N] [--start-from N] [--parallel N] [--messages-dir DIR] [--output FILE]
+  python3 analyze_candidates.py --tiktok-export FILE [--batch-size N] [--start-from N] [--parallel N] [--output FILE] [--fresh]
 
 ПАРАМЕТРЫ:
-  --batch-size N      Количество чатов для обработки за раз (по умолчанию: 50)
-  --start-from N      Начать с чата номер N (по умолчанию: 0)
-  --parallel N        Количество параллельных запросов (по умолчанию: 5)
-  --messages-dir DIR  Папка с переписками (по умолчанию: TickTokDMParser/exported_messages)
-  --output FILE       Выходной файл (по умолчанию: candidate_analysis.json)
+  --batch-size N       Количество чатов для обработки за раз (по умолчанию: 50)
+  --start-from N       Начать с чата номер N (по умолчанию: 0)
+  --parallel N         Количество параллельных запросов (по умолчанию: 5)
+  --messages-dir DIR   Папка с переписками (по умолчанию: TickTokDMParser/exported_messages)
+  --tiktok-export FILE Файл экспорта данных TikTok (user_data_tiktok.json)
+  --output FILE        Выходной файл (по умолчанию: candidate_analysis.json)
+  --fresh              Начать анализ с нуля, игнорируя существующие результаты
 
 ПРИМЕР:
   python3 analyze_candidates.py --batch-size 100 --parallel 5
+  python3 analyze_candidates.py --tiktok-export user_data_tiktok.json --fresh --batch-size 100
 """
 
 import json
@@ -388,6 +392,35 @@ def read_chat_files(messages_dir):
     return files
 
 
+def read_tiktok_export(filepath):
+    """Читает файл экспорта TikTok и преобразует в формат чатов"""
+    with open(filepath, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    chat_history = data.get('Direct Message', {}).get('Direct Messages', {}).get('ChatHistory', {})
+    
+    chats = []
+    for chat_key, messages in chat_history.items():
+        chat_name = chat_key.replace('Chat History with ', '').rstrip(':')
+        
+        converted_messages = []
+        for msg in reversed(messages):
+            converted_messages.append({
+                'time': msg.get('Date', ''),
+                'author': msg.get('From', ''),
+                'text': msg.get('Content', '')
+            })
+        
+        chats.append({
+            'fileName': f"{chat_name}.json",
+            'chatName': chat_name,
+            'messages': converted_messages
+        })
+    
+    chats.sort(key=lambda x: x['chatName'].lower())
+    return chats
+
+
 def format_messages(messages):
     """Форматирует сообщения для анализа"""
     formatted = []
@@ -471,17 +504,24 @@ async def process_batch(chats_batch, total_chats, start_offset):
 
 
 async def main_async(args):
-    if not os.path.exists(args.messages_dir):
-        print(f"❌ Папка {args.messages_dir} не найдена")
-        sys.exit(1)
-
-    print(f"📥 Загрузка переписок из {args.messages_dir}...")
-    chats = read_chat_files(args.messages_dir)
+    if args.tiktok_export:
+        if not os.path.exists(args.tiktok_export):
+            print(f"❌ Файл {args.tiktok_export} не найден")
+            sys.exit(1)
+        print(f"📥 Загрузка переписок из TikTok экспорта {args.tiktok_export}...")
+        chats = read_tiktok_export(args.tiktok_export)
+    else:
+        if not os.path.exists(args.messages_dir):
+            print(f"❌ Папка {args.messages_dir} не найдена")
+            sys.exit(1)
+        print(f"📥 Загрузка переписок из {args.messages_dir}...")
+        chats = read_chat_files(args.messages_dir)
+    
     total_chats = len(chats)
     print(f"✅ Найдено {total_chats} переписок")
 
     existing_results = {}
-    if os.path.exists(args.output):
+    if not args.fresh and os.path.exists(args.output):
         try:
             with open(args.output, 'r', encoding='utf-8') as f:
                 existing = json.load(f)
@@ -490,6 +530,8 @@ async def main_async(args):
             print(f"📂 Загружено {len(existing_results)} существующих результатов")
         except:
             pass
+    elif args.fresh:
+        print("🔄 Режим --fresh: начинаем анализ с нуля")
 
     start_idx = args.start_from
     end_idx = min(start_idx + args.batch_size, total_chats)
@@ -568,7 +610,9 @@ def main():
     parser.add_argument('--start-from', type=int, default=0, help='Начать с чата номер N')
     parser.add_argument('--parallel', type=int, default=5, help='Количество параллельных запросов')
     parser.add_argument('--messages-dir', default='TickTokDMParser/exported_messages', help='Папка с переписками')
+    parser.add_argument('--tiktok-export', help='Файл экспорта данных TikTok (user_data_tiktok.json)')
     parser.add_argument('--output', default='candidate_analysis.json', help='Выходной файл')
+    parser.add_argument('--fresh', action='store_true', help='Начать анализ с нуля, игнорируя существующие результаты')
 
     args = parser.parse_args()
     asyncio.run(main_async(args))

@@ -180,9 +180,6 @@ def upsert_driver(database_id, candidate, existing_drivers):
         existing = existing_drivers[chat_name]
         existing_messages = existing.get('messagesCount', 0)
         
-        if current_messages < existing_messages:
-            return None, "warning", f"{existing_messages} → {current_messages}"
-        
         if current_messages == existing_messages:
             return None, "skipped", None
         
@@ -214,7 +211,6 @@ def import_drivers(database_id, batch_size=None):
     created = 0
     updated = 0
     skipped = 0
-    warnings = 0
     errors = 0
     total = len(candidates)
     
@@ -239,9 +235,6 @@ def import_drivers(database_id, batch_size=None):
                     result, action, info = future.result()
                     if action == "skipped":
                         skipped += 1
-                    elif action == "warning":
-                        print(f"  ⚠️  {chat_name} — в файле меньше сообщений ({info})")
-                        warnings += 1
                     elif action == "created" and result:
                         print(f"  ✅ {chat_name} (создан)")
                         created += 1
@@ -258,7 +251,7 @@ def import_drivers(database_id, batch_size=None):
         if batch_start + 10 < total:
             time.sleep(1)
     
-    print(f"\n📊 Результат: ✅ создано {created} / 🔄 обновлено {updated} / ⏭️  без изменений {skipped} / ⚠️  меньше сообщений {warnings} / ❌ ошибок {errors}")
+    print(f"\n📊 Результат: ✅ создано {created} / 🔄 обновлено {updated} / ⏭️  без изменений {skipped} / ❌ ошибок {errors}")
 
 
 def main():

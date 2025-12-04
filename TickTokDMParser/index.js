@@ -28,9 +28,13 @@ async function randomDelay(min = 500, max = 1000) {
 
 function loadState() {
   if (fs.existsSync(STATE_FILE)) {
-    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+    const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+    if (!state.displayNameToUsernames) {
+      state.displayNameToUsernames = {};
+    }
+    return state;
   }
-  return { chats: {} };
+  return { chats: {}, displayNameToUsernames: {} };
 }
 
 function saveState(state) {
@@ -195,6 +199,24 @@ function getMessageHash(message) {
   return `${message.text}_${message.time}_${message.author}`.replace(/\s/g, '');
 }
 
+function findChatInState(state, displayName) {
+  if (!state.displayNameToUsernames) {
+    state.displayNameToUsernames = {};
+  }
+  const usernames = state.displayNameToUsernames[displayName];
+  if (usernames && usernames.length === 1 && state.chats[usernames[0]]) {
+    return state.chats[usernames[0]];
+  }
+  if (usernames && usernames.length > 1) {
+    return null;
+  }
+  const matches = Object.keys(state.chats).filter(key => state.chats[key].displayName === displayName);
+  if (matches.length === 1) {
+    return state.chats[matches[0]];
+  }
+  return null;
+}
+
 async function exportMessages(page, state) {
   console.log('\nПереход к сообщениям...');
   await page.goto('https://www.tiktok.com/messages?scene=business', { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -308,9 +330,10 @@ async function exportMessages(page, state) {
       continue;
     }
 
-    if (chatInfo.lastMessageTime && state.chats[chatKey]?.lastExport) {
+    const existingChat = findChatInState(state, chatName);
+    if (chatInfo.lastMessageTime && existingChat?.lastExport) {
       try {
-        const lastExportDate = new Date(state.chats[chatKey].lastExport);
+        const lastExportDate = new Date(existingChat.lastExport);
         let lastMessageDate;
 
         if (chatInfo.lastMessageTime.includes(':') && !chatInfo.lastMessageTime.includes('/')) {
@@ -437,6 +460,12 @@ async function exportMessages(page, state) {
         messageHashes: allHashes,
         messagesCount: allMessages.length
       };
+      if (!state.displayNameToUsernames[chatName]) {
+        state.displayNameToUsernames[chatName] = [];
+      }
+      if (!state.displayNameToUsernames[chatName].includes(finalChatKey)) {
+        state.displayNameToUsernames[chatName].push(finalChatKey);
+      }
 
       newMessagesTotal += newMessages.length;
       console.log(`  ✓ Новых сообщений: ${newMessages.length} (всего в чате: ${allMessages.length})`);
@@ -450,8 +479,18 @@ async function exportMessages(page, state) {
       });
     } else {
       console.log(`  ✓ Новых сообщений нет`);
+      if (!state.displayNameToUsernames[chatName]) {
+        state.displayNameToUsernames[chatName] = [];
+      }
+      if (!state.displayNameToUsernames[chatName].includes(finalChatKey)) {
+        state.displayNameToUsernames[chatName].push(finalChatKey);
+      }
+      if (state.chats[finalChatKey]) {
+        state.chats[finalChatKey].lastExport = new Date().toISOString();
+      }
     }
 
+    saveState(state);
     await randomDelay(500, 1000);
   }
 
