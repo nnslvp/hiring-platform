@@ -49,8 +49,14 @@ export default {
       const currentStatus = page.properties[env.COL_STATUS]?.status?.name;
       
       if (currentStatus !== env.STATUS_FROM) {
-        await sendTelegramMessage(env.TG_BOT_TOKEN, chatId,
-          `⛔️ Не могу обновить.\n\nЗапись в статусе "${currentStatus}", а нужен "${env.STATUS_FROM}".\n\nИзменения отклонены.`);
+        // Специальное сообщение, если водитель уже был перенесён
+        if (currentStatus === env.STATUS_TO) {
+          await sendTelegramMessage(env.TG_BOT_TOKEN, chatId,
+            `ℹ️ Водитель "${username}" уже был добавлен ранее.\n\nСтатус: "${currentStatus}"\n\nВот запись:\n${page.url}`);
+        } else {
+          await sendTelegramMessage(env.TG_BOT_TOKEN, chatId,
+            `⛔️ Не могу обновить.\n\nЗапись в статусе "${currentStatus}", а нужен "${env.STATUS_FROM}".\n\nИзменения отклонены.\n\nВот запись:\n${page.url}`);
+        }
         return new Response('OK', { status: 200 });
       }
 

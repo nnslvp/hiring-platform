@@ -12,7 +12,8 @@
     "Name": {"title": {}},
     "TikTok URL": {"url": {}},
     "Гражданство": {"multi_select": {"options": []}},
-    
+    "Номер телефона": {"rich_text": {}},
+
     "Разрешение на работу": {"select": {"options": [
       {"name": "есть", "color": "green"},
       {"name": "в процессе", "color": "yellow"},
@@ -83,7 +84,17 @@
       {"name": "TikTok", "color": "pink"}
     ]}},
     "fileName": {"rich_text": {}},
-    "messagesCount": {"number": {"format": "number"}}
+    "messagesCount": {"number": {"format": "number"}},
+    "TikTok Nickname": {"rich_text": {}},
+    "Status": {"status": {"options": [
+      {"name": "Масса", "color": "default"},
+      {"name": "К работе", "color": "gray"},
+      {"name": "Высланы вакансии", "color": "blue"},
+      {"name": "Ждет новых вакансий", "color": "yellow"},
+      {"name": "В процессе найма", "color": "green"},
+      {"name": "Нанят", "color": "green"},
+      {"name": "Нанят не нами", "color": "red"}
+    ]}}
   }
 }
 ```
@@ -95,6 +106,7 @@
 | **Name** | title | — | TikTok username водителя |
 | **TikTok URL** | url | — | Ссылка на профиль |
 | **Гражданство** | multi_select | динамические | Страны гражданства |
+| **Номер телефона** | rich_text | — | Контактный номер телефона |
 | **Разрешение на работу** | select | есть / в процессе / нет | Статус разрешения |
 | **Код 95** | select | есть / в процессе / нет | Квалификация водителя |
 | **ADR** | select | есть / в процессе / нет | Сертификат опасных грузов |
@@ -116,6 +128,8 @@
 | **Источник** | select | TikTok | Откуда пришёл кандидат |
 | **fileName** | rich_text | — | Имя файла экспорта |
 | **messagesCount** | number | — | Кол-во сообщений в чате |
+| **TikTok Nickname** | rich_text | — | Никнейм TikTok водителя |
+| **Status** | status | Масса / К работе / Задаю вопросы / Высланы вакансии / Ждет новых вакансий / В процессе найма / Нанят / Нанят не нами | Статус обработки кандидата |
 
 ## Примечания
 

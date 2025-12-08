@@ -21,10 +21,59 @@ load_dotenv()
 NOTION_TOKEN = os.getenv('NOTION_TOKEN')
 DRIVERS_DB_ID = '2ba95810-6f37-815e-86f2-ed07436ca6b0'
 CANDIDATE_ANALYSIS_FILE = 'candidate_analysis.json'
+TIKTOK_DATA_FILE = 'user_data_tiktok.json'
+
+# Кэш переписок
+_chat_history_cache = None
 
 if not NOTION_TOKEN:
     print("❌ Ошибка: переменная окружения NOTION_TOKEN не установлена")
     sys.exit(1)
+
+
+def load_chat_history_cache():
+    """Загружает все переписки из user_data_tiktok.json"""
+    global _chat_history_cache
+    if _chat_history_cache is not None:
+        return _chat_history_cache
+    
+    if not os.path.exists(TIKTOK_DATA_FILE):
+        print(f"⚠️ Файл {TIKTOK_DATA_FILE} не найден")
+        _chat_history_cache = {}
+        return _chat_history_cache
+    
+    with open(TIKTOK_DATA_FILE, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    chat_history = data.get("Direct Message", {}).get("Direct Messages", {}).get("ChatHistory", {})
+    
+    _chat_history_cache = {}
+    for key, messages in chat_history.items():
+        if key.startswith("Chat History with ") and key.endswith(":"):
+            chat_name = key[len("Chat History with "):-1]
+            _chat_history_cache[chat_name] = messages
+    
+    return _chat_history_cache
+
+
+def get_chat_text(chat_name):
+    """Возвращает переписку как текст для Notion"""
+    cache = load_chat_history_cache()
+    messages = cache.get(chat_name, [])
+    if not messages:
+        return None
+    
+    # Сортируем по дате (старые сначала)
+    sorted_msgs = sorted(messages, key=lambda m: m.get('Date', ''))
+    
+    lines = []
+    for msg in sorted_msgs:
+        date = msg.get('Date', '')
+        author = msg.get('From', '')
+        content = msg.get('Content', '')
+        lines.append(f"[{date}] {author}: {content}")
+    
+    return "\n\n".join(lines)
 
 
 def notion_request(method, endpoint, data=None):
@@ -51,7 +100,83 @@ def notion_request(method, endpoint, data=None):
         return None
 
 
-def build_page_properties(candidate):
+def get_page_blocks(page_id):
+    """Получает блоки страницы"""
+    result = notion_request("GET", f"/blocks/{page_id}/children?page_size=100")
+    return result.get("results", []) if result else []
+
+
+def delete_block(block_id):
+    """Удаляет блок"""
+    return notion_request("DELETE", f"/blocks/{block_id}")
+
+
+def update_page_chat(page_id, chat_name):
+    """Обновляет переписку на странице — удаляет старую, добавляет новую"""
+    chat_text = get_chat_text(chat_name)
+    if not chat_text:
+        return
+    
+    # Удаляем старый блок переписки (ищем по заголовку)
+    blocks = get_page_blocks(page_id)
+    for block in blocks:
+        if block.get("type") == "heading_3":
+            rich_text = block.get("heading_3", {}).get("rich_text", [])
+            if rich_text and rich_text[0].get("text", {}).get("content", "").startswith("💬 Переписка"):
+                delete_block(block["id"])
+                # Удаляем следующий блок (текст переписки)
+                idx = blocks.index(block)
+                if idx + 1 < len(blocks):
+                    delete_block(blocks[idx + 1]["id"])
+                break
+    
+    # Notion ограничивает текст блока до 2000 символов, разбиваем если надо
+    MAX_LEN = 2000
+    text_chunks = []
+    if len(chat_text) <= MAX_LEN:
+        text_chunks = [chat_text]
+    else:
+        # Разбиваем по сообщениям
+        parts = chat_text.split("\n\n")
+        current = ""
+        for part in parts:
+            if len(current) + len(part) + 2 <= MAX_LEN:
+                current = current + "\n\n" + part if current else part
+            else:
+                if current:
+                    text_chunks.append(current)
+                current = part if len(part) <= MAX_LEN else part[:MAX_LEN-3] + "..."
+        if current:
+            text_chunks.append(current)
+    
+    # Создаём блоки
+    children = [
+        {
+            "object": "block",
+            "type": "heading_3",
+            "heading_3": {
+                "rich_text": [{"type": "text", "text": {"content": f"💬 Переписка ({len(load_chat_history_cache().get(chat_name, []))} сообщений)"}}]
+            }
+        }
+    ]
+    for chunk in text_chunks:
+        children.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [{"type": "text", "text": {"content": chunk}}]
+            }
+        })
+    
+    # Добавляем на страницу
+    notion_request("PATCH", f"/blocks/{page_id}/children", {"children": children})
+
+
+def build_page_properties(candidate, is_update=False):
+    """
+    Создаёт свойства для страницы.
+    is_update=True: не включает поля, которые редактирует менеджер (Name, Status)
+    """
     chat_name = candidate.get('chatName', '')
     file_name = candidate.get('fileName', '')
     messages_count = candidate.get('messagesCount', 0)
@@ -61,11 +186,14 @@ def build_page_properties(candidate):
     tiktok_url = f"https://www.tiktok.com/@{chat_name}" if chat_name else None
     
     props = {
-        "Name": {"title": [{"text": {"content": chat_name}}]},
+        "TikTok Nickname": {"rich_text": [{"text": {"content": chat_name}}]},
         "fileName": {"rich_text": [{"text": {"content": file_name}}]},
         "messagesCount": {"number": messages_count},
         "Источник": {"select": {"name": "TikTok"}},
     }
+    
+    if not is_update:
+        props["Name"] = {"title": [{"text": {"content": chat_name}}]}
     
     if tiktok_url:
         props["TikTok URL"] = {"url": tiktok_url}
@@ -119,7 +247,10 @@ def build_page_properties(candidate):
     
     if profile.get('citizenship'):
         props["Гражданство"] = {"multi_select": [{"name": c} for c in profile['citizenship']]}
-    
+
+    if profile.get('phone_number'):
+        props["Номер телефона"] = {"rich_text": [{"text": {"content": profile['phone_number']}}]}
+
     return props
 
 
@@ -135,12 +266,12 @@ def create_driver_page(database_id, candidate):
 
 
 def update_driver_page(page_id, candidate):
-    props = build_page_properties(candidate)
+    props = build_page_properties(candidate, is_update=True)
     return notion_request("PATCH", f"/pages/{page_id}", {"properties": props})
 
 
 def fetch_all_drivers(database_id):
-    """Загружает все записи из базы и возвращает словарь {name: {page_id, messagesCount}}"""
+    """Загружает все записи из базы и возвращает словарь {nickname: {page_id, messagesCount}}"""
     drivers = {}
     start_cursor = None
     
@@ -154,15 +285,19 @@ def fetch_all_drivers(database_id):
             break
         
         for page in result.get("results", []):
-            title_prop = page.get("properties", {}).get("Name", {}).get("title", [])
-            if title_prop:
-                name = title_prop[0].get("text", {}).get("content", "")
-                if name:
-                    messages_count = page.get("properties", {}).get("messagesCount", {}).get("number", 0) or 0
-                    drivers[name] = {
-                        "page_id": page["id"],
-                        "messagesCount": messages_count
-                    }
+            nickname_prop = page.get("properties", {}).get("TikTok Nickname", {}).get("rich_text", [])
+            if nickname_prop:
+                nickname = nickname_prop[0].get("text", {}).get("content", "")
+            else:
+                title_prop = page.get("properties", {}).get("Name", {}).get("title", [])
+                nickname = title_prop[0].get("text", {}).get("content", "") if title_prop else ""
+            
+            if nickname:
+                messages_count = page.get("properties", {}).get("messagesCount", {}).get("number", 0) or 0
+                drivers[nickname] = {
+                    "page_id": page["id"],
+                    "messagesCount": messages_count
+                }
         
         if not result.get("has_more"):
             break
@@ -183,9 +318,15 @@ def upsert_driver(database_id, candidate, existing_drivers):
         if current_messages == existing_messages:
             return None, "skipped", None
         
-        return update_driver_page(existing['page_id'], candidate), "updated", None
+        result = update_driver_page(existing['page_id'], candidate)
+        if result:
+            update_page_chat(existing['page_id'], chat_name)
+        return result, "updated", None
     else:
-        return create_driver_page(database_id, candidate), "created", None
+        result = create_driver_page(database_id, candidate)
+        if result and result.get('id'):
+            update_page_chat(result['id'], chat_name)
+        return result, "created", None
 
 
 def import_drivers(database_id, batch_size=None):
