@@ -42,4 +42,3 @@ patches/
 *.json
 !.gitkeep
 TickTokDMParser/.chrome-data/
-.chrome-data/

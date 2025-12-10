@@ -7,7 +7,7 @@
   python3 analyze_candidates.py --tiktok-export FILE [--batch-size N] [--start-from N] [--parallel N] [--output FILE] [--fresh]
 
 ПАРАМЕТРЫ:
-  --batch-size N       Количество чатов для обработки за раз (по умолчанию: 50)
+  --batch-size N       Количество чатов для обработки за раз (по умолчанию: все)
   --start-from N       Начать с чата номер N (по умолчанию: 0)
   --parallel N         Количество параллельных запросов (по умолчанию: 5)
   --messages-dir DIR   Папка с переписками (по умолчанию: TickTokDMParser/exported_messages)
@@ -41,6 +41,18 @@ load_dotenv()
 
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 RECRUITER_ACCOUNT = 'rabotazarulem'
+
+# Номера которые НЕ являются номерами кандидатов (номер менеджера/бизнеса)
+EXCLUDED_PHONE_NUMBERS = {'+48573899403'}
+
+def clean_manager_phone(result):
+    """Удаляет номер менеджера из результата, если AI ошибочно его записал."""
+    phone = result.get('profile', {}).get('phone_number')
+    if phone:
+        normalized = phone.replace(' ', '').replace('-', '')
+        if normalized in EXCLUDED_PHONE_NUMBERS:
+            result['profile']['phone_number'] = None
+    return result
 
 if not OPENAI_API_KEY:
     print("❌ Ошибка: переменная окружения OPENAI_API_KEY не установлена")
@@ -161,7 +173,12 @@ RESPONSE_SCHEMA = {
                 },
                 "min_salary_expectation": {
                     "type": ["integer", "null"],
-                    "description": "Минимальная ожидаемая ставка (злотых/день)"
+                    "description": "Минимальная ожидаемая ставка в день (число без валюты)"
+                },
+                "salary_currency": {
+                    "type": ["string", "null"],
+                    "enum": ["PLN", "EUR", None],
+                    "description": "Валюта зарплатных ожиданий"
                 },
                 "citizenship": {
                     "type": "array",
@@ -188,6 +205,7 @@ RESPONSE_SCHEMA = {
                 "avoided_regions",
                 "preferred_base_cities",
                 "min_salary_expectation",
+                "salary_currency",
                 "citizenship",
                 "phone_number"
             ],
@@ -374,13 +392,23 @@ SYSTEM_PROMPT = f"""Ты эксперт по анализу переписок �
 
 ═══ ОЖИДАНИЯ ПО ОПЛАТЕ ═══
 
-14. min_salary_expectation — минимальная ставка (число или null)
-    • "от 400 злотых" → 400
-    • null если не указано
+14. min_salary_expectation — минимальная ставка В ДЕНЬ (число или null)
+    • "от 400 злотых в день" → 400
+    • "ставка 95€" → 95
+    • "минимум 100 евро" → 100
+    • "от 500" → 500
+    • null: если зарплата не обсуждалась
+    
+    ВАЖНО: НЕ конвертировать валюты! Сохраняй число как есть.
+
+15. salary_currency — валюта ожиданий ("PLN" / "EUR" / null)
+    • "злотых", "zł", "PLN" → "PLN"
+    • "евро", "€", "EUR" → "EUR"
+    • null: если валюта не указана или зарплата не обсуждалась
 
 ═══ ГРАЖДАНСТВО ═══
 
-15. citizenship — гражданство кандидата (массив)
+16. citizenship — гражданство кандидата (массив)
     • "украинец", "гражданин Украины" → ["Украина"]
     • "белорус" → ["Беларусь"]
     • "из России", "россиянин" → ["Россия"]
@@ -396,11 +424,11 @@ SYSTEM_PROMPT = f"""Ты эксперт по анализу переписок �
 
 ═══ КОНТАКТНЫЕ ДАННЫЕ ═══
 
-16. phone_number — номер телефона (строка или null)
-    • Извлекай ТОЛЬКО реальные номера телефонов, которые кандидат дал для связи
+17. phone_number — номер телефона КАНДИДАТА (строка или null)
+    • Извлекай ТОЛЬКО реальные номера телефонов КАНДИДАТА
+    • НИКОГДА не записывай номер рекрутера (rabotazarulem): +48 573 899 403, +48573899403
     • Формат: сохраняй точно как указано, без изменений
-    • Примеры: "+48 573 899 403", "+48787499748", "+7 926 123 45 67"
-    • null: если номер телефона не указан в переписке
+    • null: если номер телефона кандидата не указан
 """
 
 
@@ -565,7 +593,10 @@ async def main_async(args):
         print("🔄 Режим --fresh: начинаем анализ с нуля")
 
     start_idx = args.start_from
-    end_idx = min(start_idx + args.batch_size, total_chats)
+    if args.batch_size is None:
+        end_idx = total_chats
+    else:
+        end_idx = min(start_idx + args.batch_size, total_chats)
 
     if start_idx >= total_chats:
         print(f"❌ Индекс начала ({start_idx}) >= количества чатов ({total_chats})")
@@ -609,6 +640,8 @@ async def main_async(args):
         batch_results = await process_batch(batch_chats, total_chats, batch_start)
         
         for result in batch_results:
+            # Очищаем номер менеджера, если AI ошибочно его записал
+            result = clean_manager_phone(result)
             results.append(result)
             existing_results[result['fileName']] = result
             success_count += 1
@@ -630,14 +663,15 @@ async def main_async(args):
 
     if end_idx < total_chats:
         print(f"\n💡 Следующий батч:")
-        print(f"   python3 analyze_candidates.py --start-from {end_idx} --batch-size {args.batch_size}")
+        batch_size_arg = f" --batch-size {args.batch_size}" if args.batch_size is not None else ""
+        print(f"   python3 analyze_candidates.py --start-from {end_idx}{batch_size_arg}")
     else:
         print(f"\n🎉 Все переписки обработаны!")
 
 
 def main():
     parser = argparse.ArgumentParser(description='Анализатор профилей кандидатов')
-    parser.add_argument('--batch-size', type=int, default=50, help='Количество чатов для обработки за раз')
+    parser.add_argument('--batch-size', type=int, default=None, help='Количество чатов для обработки за раз (по умолчанию: все)')
     parser.add_argument('--start-from', type=int, default=0, help='Начать с чата номер N')
     parser.add_argument('--parallel', type=int, default=5, help='Количество параллельных запросов')
     parser.add_argument('--messages-dir', default='TickTokDMParser/exported_messages', help='Папка с переписками')
